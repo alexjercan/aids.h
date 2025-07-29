@@ -22,6 +22,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
+#include <dirent.h>
 
 #ifndef NULL
 #define NULL ((void *)0)
@@ -50,6 +52,13 @@
         fprintf(stderr, "%s:%d: UNREACHABLE: %s\n", __FILE__, __LINE__, message); \
         exit(EXIT_FAILURE);                                                    \
     } while (0)
+#define AIDS_ASSERT(condition, message)                                         \
+    do {                                                                       \
+        if (!(condition)) {                                                   \
+            fprintf(stderr, "%s:%d: ASSERTION FAILED: %s\n", __FILE__, __LINE__, message); \
+            exit(EXIT_FAILURE);                                               \
+        }                                                                      \
+    } while (0)
 
 typedef enum {
     AIDS_INFO,
@@ -73,7 +82,7 @@ typedef enum {
 void aids_log_msg(Aids_Log_Level level, const char* file, int line, const char *fmt, ...) AIDS_PRINTF_FORMAT(4, 5);
 #define aids_log(level, fmt, ...) aids_log_msg(level, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
-typedef int bool;
+typedef int boolean;
 #ifndef true
 #define true 1
 #endif // true
@@ -99,6 +108,8 @@ typedef enum {
 #endif // AIDS_TEMP_CAPACITY
 AIDSHDEF void *aids_temp_alloc(size_t size);
 AIDSHDEF char *aids_temp_sprintf(const char *format, ...) AIDS_PRINTF_FORMAT(1, 2);
+AIDSHDEF size_t aids_temp_save(void);
+AIDSHDEF void aids_temp_load(size_t);
 AIDSHDEF void aids_temp_reset(void);
 AIDSHDEF const char *aids_failure_reason(void);
 
@@ -117,6 +128,7 @@ AIDSHDEF void aids_array_init(Aids_Array *da, unsigned long item_size);
 AIDSHDEF Aids_Result aids_array_append(Aids_Array *da, const unsigned char *item);
 AIDSHDEF Aids_Result aids_array_append_many(Aids_Array *da, const unsigned char *items, unsigned long count);
 AIDSHDEF Aids_Result aids_array_get(const Aids_Array *da, unsigned long index, unsigned char **item);
+AIDSHDEF void aids_array_sort(Aids_Array *da, int (*compare)(const void *, const void *));
 AIDSHDEF void aids_array_free(Aids_Array *da);
 
 typedef struct {
@@ -125,8 +137,18 @@ typedef struct {
 } Aids_String_Slice;
 
 AIDSHDEF void aids_string_slice_init(Aids_String_Slice *ss, const char *str, unsigned long len);
-AIDSHDEF bool ds_string_slice_tokenize(Aids_String_Slice *ss, char delimiter, Aids_String_Slice *token);
+AIDSHDEF Aids_String_Slice aids_string_slice_from_parts(const unsigned char *str, unsigned long len);
+AIDSHDEF boolean aids_string_slice_tokenize(Aids_String_Slice *ss, char delimiter, Aids_String_Slice *token);
 AIDSHDEF Aids_Result aids_string_slice_to_cstr(const Aids_String_Slice *ss, char **cstr);
+AIDSHDEF Aids_String_Slice aids_string_slice_from_cstr(const char *cstr);
+AIDSHDEF void aids_string_slice_trim_left(Aids_String_Slice *ss);
+AIDSHDEF void aids_string_slice_trim_right(Aids_String_Slice *ss);
+AIDSHDEF void aids_string_slice_trim(Aids_String_Slice *ss);
+AIDSHDEF boolean aids_string_slice_starts_with(Aids_String_Slice *ss, Aids_String_Slice prefix);
+AIDSHDEF boolean aids_string_slice_ends_with(Aids_String_Slice *ss, Aids_String_Slice suffix);
+AIDSHDEF void aids_string_slice_skip(Aids_String_Slice *ss, unsigned long count);
+AIDSHDEF boolean aids_string_slice_atol(const Aids_String_Slice *ss, long *value, int base);
+AIDSHDEF int aids_string_slice_compare(const Aids_String_Slice *ss1, const Aids_String_Slice *ss2);
 AIDSHDEF void aids_string_slice_free(Aids_String_Slice *ss);
 
 typedef struct {
@@ -135,7 +157,7 @@ typedef struct {
 
 AIDSHDEF void aids_string_builder_init(Aids_String_Builder *sb);
 AIDSHDEF Aids_Result aids_string_builder_append(Aids_String_Builder *sb, const char *format, ...) AIDS_PRINTF_FORMAT(2, 3);
-AIDSHDEF Aids_Result aids_string_builder_append_slice(Aids_String_Builder *sb, const Aids_String_Slice *slice);
+AIDSHDEF Aids_Result aids_string_builder_append_slice(Aids_String_Builder *sb, Aids_String_Slice slice);
 AIDSHDEF Aids_Result aids_string_builder_appendc(Aids_String_Builder *sb, char c);
 AIDSHDEF Aids_Result aids_string_builder_to_cstr(const Aids_String_Builder *sb, char **cstr);
 AIDSHDEF void aids_string_builder_to_slice(const Aids_String_Builder *sb, Aids_String_Slice *slice);
@@ -145,8 +167,14 @@ AIDSHDEF void aids_string_builder_free(Aids_String_Builder *sb);
 #define LINE_MAX 1024
 #endif // LINE_MAX
 
-AIDSHDEF Aids_Result aids_io_read(const char *filename, Aids_String_Slice *ss, const char *mode);
-AIDSHDEF Aids_Result aids_io_write(const char *filename, const Aids_String_Slice *ss, const char *mode);
+typedef struct {
+    boolean order_by_name; // If true, files will be sorted by name
+} Aids_List_Files_Options;
+
+AIDSHDEF Aids_Result aids_io_read(const Aids_String_Slice *filename, Aids_String_Slice *ss, const char *mode);
+AIDSHDEF Aids_Result aids_io_write(const Aids_String_Slice *filename, const Aids_String_Slice *ss, const char *mode);
+AIDSHDEF Aids_Result aids_io_list(const Aids_String_Slice *path, Aids_Array *files, Aids_List_Files_Options *options);
+AIDSHDEF Aids_Result aids_io_basename(const Aids_String_Slice *filepath, Aids_String_Slice *filename);
 
 #endif // AIDS_H
 
@@ -214,6 +242,14 @@ AIDSHDEF char *aids_temp_sprintf(const char *format, ...) {
     va_end(args);
 
     return buffer;
+}
+
+AIDSHDEF size_t aids_temp_save(void) {
+    return aids_temp_size;
+}
+
+AIDSHDEF void aids_temp_load(size_t size) {
+    aids_temp_size = size;
 }
 
 AIDSHDEF void aids_temp_reset(void) {
@@ -302,6 +338,12 @@ defer:
     return result;
 }
 
+AIDSHDEF void aids_array_sort(Aids_Array *da, int (*compare)(const void *, const void *)) {
+    if (da->count > 0 && da->items != NULL) {
+        qsort(da->items, da->count, da->item_size, compare);
+    }
+}
+
 AIDSHDEF void aids_array_free(Aids_Array *da) {
     if (da->items != NULL) {
         AIDS_FREE(da->items);
@@ -316,7 +358,15 @@ AIDSHDEF void aids_string_slice_init(Aids_String_Slice *ss, const char *str, uns
     ss->len = len;
 }
 
-AIDSHDEF bool ds_string_slice_tokenize(Aids_String_Slice *ss, char delimiter, Aids_String_Slice *token) {
+AIDSHDEF Aids_String_Slice aids_string_slice_from_parts(const unsigned char *str, unsigned long len) {
+    Aids_String_Slice ss = {0};
+    ss.str = (unsigned char *)str;
+    ss.len = len;
+
+    return ss;
+}
+
+AIDSHDEF boolean aids_string_slice_tokenize(Aids_String_Slice *ss, char delimiter, Aids_String_Slice *token) {
     if (ss->len == 0 || ss->str == NULL) {
         return false;
     }
@@ -355,6 +405,88 @@ AIDSHDEF Aids_Result aids_string_slice_to_cstr(const Aids_String_Slice *ss, char
 
 defer:
     return result;
+}
+
+AIDSHDEF Aids_String_Slice aids_string_slice_from_cstr(const char *cstr) {
+    Aids_String_Slice ss = {0};
+    if (cstr == NULL) {
+        ss.str = NULL;
+        ss.len = 0;
+    } else {
+        ss.str = (unsigned char *)cstr;
+        ss.len = strlen(cstr);
+    }
+
+    return ss;
+}
+
+AIDSHDEF void aids_string_slice_trim_left(Aids_String_Slice *ss) {
+    while (ss->len > 0 && isspace(*ss->str)) {
+        ss->str++;
+        ss->len--;
+    }
+}
+
+AIDSHDEF void aids_string_slice_trim_right(Aids_String_Slice *ss) {
+    while (ss->len > 0 && isspace(ss->str[ss->len - 1])) {
+        ss->len--;
+    }
+}
+
+AIDSHDEF void aids_string_slice_trim(Aids_String_Slice *ss) {
+    aids_string_slice_trim_left(ss);
+    aids_string_slice_trim_right(ss);
+}
+
+AIDSHDEF boolean aids_string_slice_starts_with(Aids_String_Slice *ss, Aids_String_Slice prefix) {
+    if (ss->len < prefix.len) {
+        return false;
+    }
+
+    return memcmp(ss->str, prefix.str, prefix.len) == 0;
+}
+
+AIDSHDEF boolean aids_string_slice_ends_with(Aids_String_Slice *ss, Aids_String_Slice suffix) {
+    if (ss->len < suffix.len) {
+        return false;
+    }
+
+    return memcmp(ss->str + ss->len - suffix.len, suffix.str, suffix.len) == 0;
+}
+
+AIDSHDEF void aids_string_slice_skip(Aids_String_Slice *ss, unsigned long count) {
+    if (count >= ss->len) {
+        ss->str += ss->len;
+        ss->len = 0;
+    } else {
+        ss->str += count;
+        ss->len -= count;
+    }
+}
+
+AIDSHDEF boolean aids_string_slice_atol(const Aids_String_Slice *ss, long *value, int base) {
+    if (ss->len == 0 || ss->str == NULL) {
+        aids__g_failure_reason = "String slice is empty";
+        return false;
+    }
+
+    char *endptr = NULL;
+    long result = strtol((const char *)ss->str, &endptr, base);
+    if (endptr == NULL || endptr == (const char *)ss->str) {
+        aids__g_failure_reason = "Failed to convert string slice to long";
+        return false;
+    }
+
+    *value = result;
+    return true;
+}
+
+AIDSHDEF int aids_string_slice_compare(const Aids_String_Slice *ss1, const Aids_String_Slice *ss2) {
+    if (ss1->len != ss2->len) {
+        return (ss1->len < ss2->len) ? -1 : 1;
+    }
+
+    return memcmp(ss1->str, ss2->str, ss1->len);
 }
 
 AIDSHDEF void aids_string_slice_free(Aids_String_Slice *ss) {
@@ -403,8 +535,8 @@ defer:
     return result;
 }
 
-AIDSHDEF Aids_Result aids_string_builder_append_slice(Aids_String_Builder *sb, const Aids_String_Slice *slice) {
-    return aids_array_append_many(&sb->items, slice->str, slice->len);
+AIDSHDEF Aids_Result aids_string_builder_append_slice(Aids_String_Builder *sb, Aids_String_Slice slice) {
+    return aids_array_append_many(&sb->items, slice.str, slice.len);
 }
 
 AIDSHDEF Aids_Result aids_string_builder_appendc(Aids_String_Builder *sb, char c) {
@@ -438,7 +570,7 @@ AIDSHDEF void aids_string_builder_free(Aids_String_Builder *sb) {
     aids_array_free(&sb->items);
 }
 
-AIDSHDEF Aids_Result aids_io_read(const char *filename, Aids_String_Slice *ss, const char *mode) {
+AIDSHDEF Aids_Result aids_io_read(const Aids_String_Slice *filename, Aids_String_Slice *ss, const char *mode) {
     Aids_Result result = AIDS_OK;
 
     unsigned long line_size;
@@ -447,9 +579,14 @@ AIDSHDEF Aids_Result aids_io_read(const char *filename, Aids_String_Slice *ss, c
     aids_string_builder_init(&sb);
 
     if (filename != NULL) {
-        file = fopen(filename, mode);
+        size_t temp = aids_temp_save();
+        char *temp_filename = aids_temp_sprintf("%.*s", (int)filename->len, filename->str);
+        AIDS_ASSERT(temp_filename != NULL, "Failed to create temporary filename");
+        file = fopen(temp_filename, mode);
+        aids_temp_load(temp);
+
         if (file == NULL) {
-            aids__g_failure_reason = aids_temp_sprintf("Failed to open file '%s' for reading", filename);
+            aids__g_failure_reason = aids_temp_sprintf("Failed to open file '%.*s' for reading", (int)filename->len, filename->str);
             return_defer(AIDS_ERR);
         }
     } else {
@@ -461,7 +598,7 @@ AIDSHDEF Aids_Result aids_io_read(const char *filename, Aids_String_Slice *ss, c
         line_size = fread(line, sizeof(char), LINE_MAX, file);
         Aids_String_Slice slice = { .str = (unsigned char *)line, .len = line_size };
 
-        if (aids_string_builder_append_slice(&sb, &slice) != AIDS_OK) {
+        if (aids_string_builder_append_slice(&sb, slice) != AIDS_OK) {
             aids__g_failure_reason = "Failed to append slice to string builder";
             return_defer(AIDS_ERR);
         }
@@ -482,14 +619,19 @@ defer:
     return result;
 }
 
-AIDSHDEF Aids_Result aids_io_write(const char *filename, const Aids_String_Slice *ss, const char *mode) {
+AIDSHDEF Aids_Result aids_io_write(const Aids_String_Slice *filename, const Aids_String_Slice *ss, const char *mode) {
     Aids_Result result = AIDS_OK;
 
     FILE *file = NULL;
     if (filename != NULL) {
-        file = fopen(filename, mode);
+        size_t temp = aids_temp_save();
+        char *temp_filename = aids_temp_sprintf("%.*s", (int)filename->len, filename->str);
+        AIDS_ASSERT(temp_filename != NULL, "Failed to create temporary filename");
+        file = fopen(temp_filename, mode);
+        aids_temp_load(temp);
+
         if (file == NULL) {
-            aids__g_failure_reason = aids_temp_sprintf("Failed to open file '%s' for writing", filename);
+            aids__g_failure_reason = aids_temp_sprintf("Failed to open file '%.*s' for writing", (int)filename->len, filename->str);
             return_defer(AIDS_ERR);
         }
     } else {
@@ -510,30 +652,105 @@ defer:
     return result;
 }
 
+AIDSHDEF Aids_Result aids_io_list(const Aids_String_Slice *path, Aids_Array *files /* Aids_String_Slice */, Aids_List_Files_Options *options) {
+    Aids_Result result = AIDS_OK;
+
+    size_t temp = aids_temp_save();
+    char *temp_path = aids_temp_sprintf("%.*s", (int)path->len, path->str);
+    DIR * d = opendir(temp_path);
+    aids_temp_load(temp);
+
+    if(d == NULL) {
+        aids__g_failure_reason = aids_temp_sprintf("Failed to open directory '%.*s'", (int)path->len, path->str);
+        return_defer(AIDS_ERR);
+    }
+
+    struct dirent * dir;
+    while ((dir = readdir(d)) != NULL) {
+        if(dir->d_type != DT_DIR) {
+            Aids_String_Builder sb = {0};
+            aids_string_builder_init(&sb);
+            if (aids_string_builder_append(&sb, "%.*s/%s", (int)path->len, path->str, dir->d_name) != AIDS_OK) {
+                aids__g_failure_reason = "Failed to append to string builder";
+                return_defer(AIDS_ERR);
+            }
+
+            Aids_String_Slice ss = {0};
+            aids_string_builder_to_slice(&sb, &ss);
+            if (aids_array_append(files, (unsigned char *)&ss) != AIDS_OK) {
+                aids__g_failure_reason = "Failed to append file to array";
+                return_defer(AIDS_ERR);
+            }
+        }
+    }
+
+    if (options != NULL) {
+        if (options->order_by_name) {
+            aids_array_sort(files, (int (*)(const void *, const void *))aids_string_slice_compare);
+        }
+    }
+
+defer:
+    if (d != NULL) closedir(d);
+
+    return result;
+}
+
+AIDSHDEF Aids_Result aids_io_basename(const Aids_String_Slice *filepath, Aids_String_Slice *filename) {
+    if (filepath == NULL || filename == NULL) {
+        return AIDS_ERR;
+    }
+
+    Aids_String_Slice path_slice = *filepath;
+    *filename = path_slice;
+    while (aids_string_slice_tokenize(&path_slice, '/', filename));
+
+    return AIDS_OK;
+}
+
 #endif // AIDS_IMPLEMENTATION
 
 #ifndef AIDS_STRIP_PREFIX_GUARD_
 #define AIDS_STRIP_PREFIX_GUARD_
 #   ifdef AIDS_STRIP_PREFIX
+
 #       define Array Aids_Array
 #       define array_init aids_array_init
 #       define array_append aids_array_append
 #       define array_append_many aids_array_append_many
 #       define array_get aids_array_get
+#       define array_sort aids_array_sort
 #       define array_free aids_array_free
+
 #       define String_Slice Aids_String_Slice
 #       define string_slice_init aids_string_slice_init
-#       define string_slice_tokenize ds_string_slice_tokenize
+#       define string_slice_from_parts aids_string_slice_from_parts
+#       define string_slice_tokenize aids_string_slice_tokenize
 #       define string_slice_to_cstr aids_string_slice_to_cstr
+#       define string_slice_from_cstr aids_string_slice_from_cstr
+#       define string_slice_trim_left aids_string_slice_trim_left
+#       define string_slice_trim_right aids_string_slice_trim_right
+#       define string_slice_trim aids_string_slice_trim
+#       define string_slice_starts_with aids_string_slice_starts_with
+#       define string_slice_ends_with aids_string_slice_ends_with
+#       define string_slice_skip aids_string_slice_skip
+#       define string_slice_atol aids_string_slice_atol
+#       define string_slice_compare aids_string_slice_compare
 #       define string_slice_free aids_string_slice_free
+
 #       define String_Builder Aids_String_Builder
 #       define string_builder_init aids_string_builder_init
 #       define string_builder_append aids_string_builder_append
 #       define string_builder_append_slice aids_string_builder_append_slice
+#       define string_builder_appendc aids_string_builder_appendc
 #       define string_builder_to_cstr aids_string_builder_to_cstr
 #       define string_builder_to_slice aids_string_builder_to_slice
 #       define string_builder_free aids_string_builder_free
+
 #       define io_read aids_io_read
 #       define io_write aids_io_write
+#       define io_list aids_io_list
+#       define io_basename aids_io_basename
+
 #   endif // AIDS_STRIP_PREFIX
 #endif // AIDS_STRIP_PREFIX_GUARD_
