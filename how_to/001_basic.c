@@ -49,7 +49,7 @@ static void dynamic_array_example() {
 
         // We can retrieve items from the array using `aids_array_get`.
         // This function will get the reference to the item at the specified index.
-        if (aids_array_get(&array, i, (unsigned char **)&item) != AIDS_OK) {
+        if (aids_array_get(&array, i, (void **)&item) != AIDS_OK) {
             aids_log(AIDS_ERROR, "Failed to get item at index %lu: %s", i, aids_failure_reason());
             exit(EXIT_FAILURE);
         }
