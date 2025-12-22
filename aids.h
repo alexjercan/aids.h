@@ -113,6 +113,27 @@ AIDSHDEF void aids_temp_load(size_t);
 AIDSHDEF void aids_temp_reset(void);
 AIDSHDEF const char *aids_failure_reason(void);
 
+typedef struct Aids_Node Aids_Node;
+
+struct Aids_Node {
+    Aids_Node *prev;
+    Aids_Node *next;
+    unsigned char *info;
+};
+
+typedef struct {
+    Aids_Node *first;
+    Aids_Node *last;
+    unsigned long item_size;
+} Aids_List;
+
+AIDSHDEF void aids_list_init(Aids_List *ll, unsigned long item_size);
+AIDSHDEF Aids_Result aids_list_push_front(Aids_List *ll, void *info);
+AIDSHDEF Aids_Result aids_list_push_back(Aids_List *ll, void *info);
+AIDSHDEF Aids_Result aids_list_pop_front(Aids_List *ll, void *info);
+AIDSHDEF Aids_Result aids_list_pop_back(Aids_List *ll, void *info);
+AIDSHDEF void aids_list_free(Aids_List *ll);
+
 #ifndef AIDS_ARRAY_INIT_CAPACITY
 #define AIDS_ARRAY_INIT_CAPACITY 16
 #endif // AIDS_ARRAY_INIT_CAPACITY
@@ -273,6 +294,143 @@ AIDSHDEF void aids_temp_reset(void) {
 
 AIDSHDEF const char *aids_failure_reason(void) {
     return aids__g_failure_reason;
+}
+
+AIDSHDEF void aids_list_init(Aids_List *ll, unsigned long item_size) {
+    ll->first = NULL;
+    ll->last = NULL;
+    ll->item_size = item_size;
+}
+
+static Aids_Node *aids_node_new(Aids_List ll, void *info) {
+    Aids_Node *node = AIDS_REALLOC(NULL, sizeof(Aids_Node));
+    if (node == NULL) {
+        aids__g_failure_reason = "Memory allocation failed";
+        return NULL;
+    }
+
+    node->prev = NULL;
+    node->next = NULL;
+
+    node->info = AIDS_REALLOC(NULL, ll.item_size * sizeof(unsigned char));
+    if (node->info == NULL) {
+        aids__g_failure_reason = "Memory allocation failed";
+        AIDS_FREE(node);
+        return NULL;
+    }
+
+    memcpy(node->info, info, ll.item_size);
+
+    return node;
+}
+
+static void aids_node_free(Aids_Node *node) {
+    if (node != NULL) {
+        if (node->info != NULL) {
+            AIDS_FREE(node->info);
+        }
+        AIDS_FREE(node);
+    }
+}
+
+AIDSHDEF Aids_Result aids_list_push_front(Aids_List *ll, void *info) {
+    Aids_Result result = AIDS_OK;
+    Aids_Node *node = aids_node_new(*ll, info);
+    if (node == NULL) {
+        return_defer(AIDS_ERR);
+    }
+
+    node->prev = NULL;
+    node->next = ll->first;
+    if (ll->first != NULL) {
+        ll->first->prev = node;
+    } else {
+        ll->last = node;
+    }
+    ll->first = node;
+
+defer:
+    return result;
+}
+
+AIDSHDEF Aids_Result aids_list_push_back(Aids_List *ll, void *info) {
+    Aids_Result result = AIDS_OK;
+    Aids_Node *node = aids_node_new(*ll, info);
+    if (node == NULL) {
+        return_defer(AIDS_ERR);
+    }
+
+    node->next = NULL;
+    node->prev = ll->last;
+    if (ll->last != NULL) {
+        ll->last->next = node;
+    } else {
+        ll->first = node;
+    }
+    ll->last = node;
+
+defer:
+    return result;
+}
+
+AIDSHDEF Aids_Result aids_list_pop_front(Aids_List *ll, void *info) {
+    Aids_Result result = AIDS_OK;
+    if (ll->first == NULL) {
+        aids__g_failure_reason = "List is empty";
+        return_defer(AIDS_ERR);
+    }
+
+    Aids_Node *node = ll->first;
+    memcpy(info, node->info, ll->item_size);
+
+    Aids_Node *next_node = node->next;
+    if (next_node != NULL) {
+        next_node->prev = NULL;
+    } else {
+        ll->last = NULL;
+    }
+    ll->first = next_node;
+
+    aids_node_free(node);
+
+defer:
+    return result;
+}
+
+AIDSHDEF Aids_Result aids_list_pop_back(Aids_List *ll, void *info) {
+    Aids_Result result = AIDS_OK;
+    if (ll->last == NULL) {
+        aids__g_failure_reason = "List is empty";
+        return_defer(AIDS_ERR);
+    }
+
+    Aids_Node *node = ll->last;
+    memcpy(info, node->info, ll->item_size);
+
+    Aids_Node *prev_node = node->prev;
+    if (prev_node != NULL) {
+        prev_node->next = NULL;
+    } else {
+        ll->first = NULL;
+    }
+    ll->last = prev_node;
+
+    aids_node_free(node);
+
+defer:
+    return result;
+}
+
+AIDSHDEF void aids_list_free(Aids_List *ll) {
+    Aids_Node *current = ll->first;
+    while (current != NULL) {
+        Aids_Node *next = current->next;
+        aids_node_free(current);
+        current = next;
+    }
+
+    ll->first = NULL;
+    ll->last = NULL;
 }
 
 AIDSHDEF void aids_array_init(Aids_Array *da, unsigned long item_size) {
