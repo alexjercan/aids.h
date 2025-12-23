@@ -132,6 +132,9 @@ AIDSHDEF Aids_Result aids_list_push_front(Aids_List *ll, void *info);
 AIDSHDEF Aids_Result aids_list_push_back(Aids_List *ll, void *info);
 AIDSHDEF Aids_Result aids_list_pop_front(Aids_List *ll, void *info);
 AIDSHDEF Aids_Result aids_list_pop_back(Aids_List *ll, void *info);
+AIDSHDEF Aids_Result aids_list_peek_front(Aids_List *ll, void **info);
+AIDSHDEF Aids_Result aids_list_peek_back(Aids_List *ll, void **info);
+AIDSHDEF void aids_list_reverse(Aids_List *ll);
 AIDSHDEF void aids_list_free(Aids_List *ll);
 
 #ifndef AIDS_ARRAY_INIT_CAPACITY
@@ -419,6 +422,57 @@ AIDSHDEF Aids_Result aids_list_pop_back(Aids_List *ll, void *info) {
 
 defer:
     return result;
+}
+
+AIDSHDEF Aids_Result aids_list_peek_front(Aids_List *ll, void **info) {
+    Aids_Result result = AIDS_OK;
+    if (ll->first == NULL) {
+        aids__g_failure_reason = "List is empty";
+        return_defer(AIDS_ERR);
+    }
+
+    *info = ll->first->info;
+
+defer:
+    return result;
+}
+
+AIDSHDEF Aids_Result aids_list_peek_back(Aids_List *ll, void **info) {
+    Aids_Result result = AIDS_OK;
+    if (ll->last == NULL) {
+        aids__g_failure_reason = "List is empty";
+        return_defer(AIDS_ERR);
+    }
+
+    *info = ll->last->info;
+
+defer:
+    return result;
+}
+
+static Aids_Node *aids_node_reverse(Aids_Node *head) {
+    if (head == NULL || head->next == NULL) {
+        return NULL;
+    }
+
+    Aids_Node *prev = NULL;
+    Aids_Node *current = head;
+
+    while (current != NULL) {
+        prev = current->prev;
+        current->prev = current->next;
+        current->next = prev;
+
+        current = current->prev;
+    }
+
+    return prev->prev;
+}
+
+AIDSHDEF void aids_list_reverse(Aids_List *ll) {
+    Aids_Node *current = ll->first;
+    ll->last = current;
+    ll->first = aids_node_reverse(current);
 }
 
 AIDSHDEF void aids_list_free(Aids_List *ll) {
