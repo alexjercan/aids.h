@@ -78,8 +78,7 @@ static void string_example() {
     Aids_String_Slice slice = {0};
     aids_string_builder_to_slice(&sb, &slice);
 
-    // Log the resulting string slice using the `%.*s` format specifier.
-    aids_log(AIDS_INFO, "String Builder Result: %.*s", (int)slice.len, slice.str);
+    aids_log(AIDS_INFO, "String Builder Result: " SS_Fmt, SS_Arg(slice));
 
     // Free the string builder.
     aids_string_builder_free(&sb);
