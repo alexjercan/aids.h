@@ -13,6 +13,7 @@
         - Temporary memory allocator for short-lived allocations
         - Doubly linked list
         - Dynamic array
+        - Hash map with custom hash and compare functions
         - Priority queue
         - String slice utilities
         - String builder

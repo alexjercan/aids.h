@@ -13,6 +13,7 @@ projects. This is a continuation of the
 - **Temporary Memory Allocator** - Fast allocations for short-lived data
 - **Doubly Linked List** - Generic linked list implementation
 - **Dynamic Array** - Auto-growing array with type safety
+- **Hash Map** - Generic hash table with custom hash and compare functions
 - **Priority Queue** - Min-heap based priority queue
 - **String Slice** - Efficient string manipulation without copying
 - **String Builder** - Dynamic string construction with formatting
