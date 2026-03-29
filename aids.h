@@ -126,22 +126,22 @@
 #endif
 
 #define AIDS_UNUSED(x) (void)(x)
-#define AIDS_TODO(message)                                                 \
-    do {                                                                   \
-        fprintf(stderr, "%s:%d: TODO: %s\n", __FILE__, __LINE__, message); \
-        exit(EXIT_FAILURE);                                                \
+#define AIDS_TODO(fmt, ...)                                                           \
+    do {                                                                              \
+        fprintf(stderr, "%s:%d: TODO: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+        exit(EXIT_FAILURE);                                                           \
     } while (0)
-#define AIDS_UNREACHABLE(message)                                                 \
-    do {                                                                          \
-        fprintf(stderr, "%s:%d: UNREACHABLE: %s\n", __FILE__, __LINE__, message); \
-        exit(EXIT_FAILURE);                                                       \
+#define AIDS_UNREACHABLE(fmt, ...)                                                           \
+    do {                                                                                     \
+        fprintf(stderr, "%s:%d: UNREACHABLE: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+        exit(EXIT_FAILURE);                                                                  \
     } while (0)
-#define AIDS_ASSERT(condition, message)                                                    \
-    do {                                                                                   \
-        if (!(condition)) {                                                                \
-            fprintf(stderr, "%s:%d: ASSERTION FAILED: %s\n", __FILE__, __LINE__, message); \
-            exit(EXIT_FAILURE);                                                            \
-        }                                                                                  \
+#define AIDS_ASSERT(condition, fmt, ...)                                                              \
+    do {                                                                                              \
+        if (!(condition)) {                                                                           \
+            fprintf(stderr, "%s:%d: ASSERTION FAILED: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+            exit(EXIT_FAILURE);                                                                       \
+        }                                                                                             \
     } while (0)
 
 typedef enum {
@@ -766,6 +766,10 @@ AIDSHDEF Aids_Result aids_priority_queue_insert(Aids_Priority_Queue *pq, const v
         }
 
         index = parent;
+        if (index == 0) {
+            break;
+        }
+
         parent = (index - 1) / 2;
 
         if (aids_array_get(&pq->items, index, &index_item) != AIDS_OK) {
