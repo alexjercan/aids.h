@@ -1,4 +1,4 @@
-/* Aids - v1.0.0 - Public Domain - github.com/alexjercan/aids.h
+/* Aids - v1.1.0 - Public Domain - github.com/alexjercan/aids.h
 
     # aids.h
 
@@ -229,6 +229,7 @@ AIDSHDEF Aids_Result aids_list_pop_front(Aids_List *ll, void *info);
 AIDSHDEF Aids_Result aids_list_pop_back(Aids_List *ll, void *info);
 AIDSHDEF Aids_Result aids_list_peek_front(Aids_List *ll, void **info);
 AIDSHDEF Aids_Result aids_list_peek_back(Aids_List *ll, void **info);
+AIDSHDEF void aids_list_remove_node(Aids_List *ll, Aids_Node *node);
 AIDSHDEF void aids_list_reverse(Aids_List *ll);
 AIDSHDEF void aids_list_free(Aids_List *ll);
 
@@ -252,6 +253,37 @@ AIDSHDEF Aids_Result aids_array_pop(Aids_Array *da, unsigned long index, void *i
 AIDSHDEF Aids_Result aids_array_swap(const Aids_Array *da, unsigned long index1, unsigned long index2);
 AIDSHDEF void aids_array_sort(Aids_Array *da, int (*compare)(const void *, const void *));
 AIDSHDEF void aids_array_free(Aids_Array *da);
+
+#ifndef AIDS_HASH_MAP_BUCKETS
+#define AIDS_HASH_MAP_BUCKETS 128
+#endif // AIDS_HASH_MAP_BUCKETS
+
+typedef struct {
+    void *key;
+    void *value;
+} Aids_Hash_Map_Entry;
+
+typedef struct {
+    Aids_List buckets[AIDS_HASH_MAP_BUCKETS]; /* Aids_Hash_Map_Entry */
+    unsigned long (*hash_func)(const void *);
+    int (*compare_func)(const void *, const void *);
+} Aids_Hash_Map;
+
+AIDSHDEF void aids_hash_map_init(Aids_Hash_Map *hm, unsigned long (*hash_func)(const void *), int (*compare_func)(const void *, const void *));
+AIDSHDEF Aids_Result aids_hash_map_insert(Aids_Hash_Map *hm, const void *key, const void *value);
+AIDSHDEF Aids_Result aids_hash_map_get(const Aids_Hash_Map *hm, const void *key, void **value);
+AIDSHDEF boolean aids_hash_map_contains(const Aids_Hash_Map *hm, const void *key);
+AIDSHDEF Aids_Result aids_hash_map_remove(Aids_Hash_Map *hm, const void *key);
+AIDSHDEF void aids_hash_map_free(Aids_Hash_Map *hm);
+
+typedef struct {
+    const Aids_Hash_Map *hash_map;
+    unsigned long bucket_index;
+    Aids_Node *current_node;
+} Aids_Hash_Map_Iterator;
+
+AIDSHDEF void aids_hash_map_iterator_init(Aids_Hash_Map_Iterator *it, const Aids_Hash_Map *hm);
+AIDSHDEF boolean aids_hash_map_iterator_next(Aids_Hash_Map_Iterator *it, void **key, void **value);
 
 typedef struct {
     Aids_Array items;
@@ -570,6 +602,26 @@ AIDSHDEF void aids_list_reverse(Aids_List *ll) {
     ll->first = aids_node_reverse(current);
 }
 
+AIDSHDEF void aids_list_remove_node(Aids_List *ll, Aids_Node *node) {
+    if (node == NULL) {
+        return;
+    }
+
+    if (node->prev != NULL) {
+        node->prev->next = node->next;
+    } else {
+        ll->first = node->next;
+    }
+
+    if (node->next != NULL) {
+        node->next->prev = node->prev;
+    } else {
+        ll->last = node->prev;
+    }
+
+    aids_node_free(node);
+}
+
 AIDSHDEF void aids_list_free(Aids_List *ll) {
     Aids_Node *current = ll->first;
     while (current != NULL) {
@@ -729,6 +781,153 @@ AIDSHDEF void aids_array_free(Aids_Array *da) {
     }
     da->count = 0;
     da->capacity = 0;
+}
+
+AIDSHDEF void aids_hash_map_init(Aids_Hash_Map *hm, unsigned long (*hash_func)(const void *), int (*compare_func)(const void *, const void *)) {
+    for (size_t i = 0; i < AIDS_HASH_MAP_BUCKETS; i++) {
+        aids_list_init(&hm->buckets[i], sizeof(Aids_Hash_Map_Entry));
+    }
+    hm->hash_func = hash_func;
+    hm->compare_func = compare_func;
+}
+
+AIDSHDEF Aids_Result aids_hash_map_insert(Aids_Hash_Map *hm, const void *key, const void *value) {
+    Aids_Result result = AIDS_OK;
+
+    Aids_Hash_Map_Entry entry = {0};
+    entry.key = (void *)key;
+    entry.value = (void *)value;
+
+    unsigned long hash = hm->hash_func(key);
+    size_t bucket_index = hash % AIDS_HASH_MAP_BUCKETS;
+    Aids_List *bucket = &hm->buckets[bucket_index];
+    Aids_Node *current = bucket->first;
+
+    // Overwrite value if key already exists
+    while (current != NULL) {
+        Aids_Hash_Map_Entry *current_entry = (Aids_Hash_Map_Entry *)current->info;
+        if (hm->compare_func(current_entry->key, key) == 0) {
+            current_entry->value = (void *)value;
+            return_defer(AIDS_OK);
+        }
+        current = current->next;
+    }
+
+    if (aids_list_push_back(bucket, &entry) != AIDS_OK) {
+        return_defer(AIDS_ERR);
+    }
+
+defer:
+    return result;
+}
+
+AIDSHDEF Aids_Result aids_hash_map_get(const Aids_Hash_Map *hm, const void *key, void **value) {
+    Aids_Result result = AIDS_OK;
+
+    unsigned long hash = hm->hash_func(key);
+    size_t bucket_index = hash % AIDS_HASH_MAP_BUCKETS;
+    const Aids_List *bucket = &hm->buckets[bucket_index];
+    Aids_Node *current = bucket->first;
+
+    while (current != NULL) {
+        const Aids_Hash_Map_Entry *current_entry = (const Aids_Hash_Map_Entry *)current->info;
+        if (hm->compare_func(current_entry->key, key) == 0) {
+            *value = current_entry->value;
+            return_defer(AIDS_OK);
+        }
+        current = current->next;
+    }
+
+    aids__g_failure_reason = "Key not found";
+    return_defer(AIDS_ERR);
+
+defer:
+    return result;
+}
+
+AIDSHDEF boolean aids_hash_map_contains(const Aids_Hash_Map *hm, const void *key) {
+    unsigned long hash = hm->hash_func(key);
+    size_t bucket_index = hash % AIDS_HASH_MAP_BUCKETS;
+    const Aids_List *bucket = &hm->buckets[bucket_index];
+    Aids_Node *current = bucket->first;
+
+    while (current != NULL) {
+        const Aids_Hash_Map_Entry *current_entry = (const Aids_Hash_Map_Entry *)current->info;
+        if (hm->compare_func(current_entry->key, key) == 0) {
+            return true;
+        }
+        current = current->next;
+    }
+
+    return false;
+}
+
+AIDSHDEF Aids_Result aids_hash_map_remove(Aids_Hash_Map *hm, const void *key) {
+    Aids_Result result = AIDS_OK;
+
+    unsigned long hash = hm->hash_func(key);
+    size_t bucket_index = hash % AIDS_HASH_MAP_BUCKETS;
+    Aids_List *bucket = &hm->buckets[bucket_index];
+    Aids_Node *current = bucket->first;
+
+    while (current != NULL) {
+        const Aids_Hash_Map_Entry *current_entry = (const Aids_Hash_Map_Entry *)current->info;
+        if (hm->compare_func(current_entry->key, key) == 0) {
+            aids_list_remove_node(bucket, current);
+            return_defer(AIDS_OK);
+        }
+        current = current->next;
+    }
+
+    aids__g_failure_reason = "Key not found";
+    return_defer(AIDS_ERR);
+
+defer:
+    return result;
+}
+
+AIDSHDEF void aids_hash_map_free(Aids_Hash_Map *hm) {
+    for (size_t i = 0; i < AIDS_HASH_MAP_BUCKETS; i++) {
+        aids_list_free(&hm->buckets[i]);
+    }
+}
+
+AIDSHDEF void aids_hash_map_iterator_init(Aids_Hash_Map_Iterator *it, const Aids_Hash_Map *hm) {
+    it->hash_map = hm;
+    it->bucket_index = 0;
+    it->current_node = NULL;
+
+    // Move to the first non-empty bucket
+    while (it->bucket_index < AIDS_HASH_MAP_BUCKETS && it->hash_map->buckets[it->bucket_index].first == NULL) {
+        it->bucket_index++;
+    }
+
+    if (it->bucket_index < AIDS_HASH_MAP_BUCKETS) {
+        it->current_node = it->hash_map->buckets[it->bucket_index].first;
+    }
+}
+
+AIDSHDEF boolean aids_hash_map_iterator_next(Aids_Hash_Map_Iterator *it, void **key, void **value) {
+    if (it->current_node == NULL) {
+        return false;
+    }
+
+    Aids_Hash_Map_Entry *entry = (Aids_Hash_Map_Entry *)it->current_node->info;
+    *key = entry->key;
+    *value = entry->value;
+
+    it->current_node = it->current_node->next;
+
+    // If we reached the end of the current bucket, move to the next non-empty bucket
+    while (it->current_node == NULL) {
+        it->bucket_index++;
+        if (it->bucket_index >= AIDS_HASH_MAP_BUCKETS) {
+            break;
+        }
+        it->current_node = it->hash_map->buckets[it->bucket_index].first;
+    }
+
+    return true;
 }
 
 AIDSHDEF void aids_priority_queue_init(Aids_Priority_Queue *pq, unsigned long item_size, int (*compare)(const void *, const void *)) {
@@ -1242,6 +1441,17 @@ AIDSHDEF Aids_Result aids_io_basename(const Aids_String_Slice *filepath, Aids_St
 #       define array_sort aids_array_sort
 #       define array_free aids_array_free
 
+#       define Hash_Map Aids_Hash_Map
+#       define hash_map_init aids_hash_map_init
+#       define hash_map_insert aids_hash_map_insert
+#       define hash_map_get aids_hash_map_get
+#       define hash_map_contains aids_hash_map_contains
+#       define hash_map_remove aids_hash_map_remove
+#       define hash_map_free aids_hash_map_free
+#       define Hash_Map_Iterator Aids_Hash_Map_Iterator
+#       define hash_map_iterator_init aids_hash_map_iterator_init
+#       define hash_map_iterator_next aids_hash_map_iterator_next
+
 #       define Priority_Queue Aids_Priority_Queue
 #       define priority_queue_init aids_priority_queue_init
 #       define priority_queue_insert aids_priority_queue_insert
@@ -1284,6 +1494,7 @@ AIDSHDEF Aids_Result aids_io_basename(const Aids_String_Slice *filepath, Aids_St
 
 /*
     Revision history:
+        1.1.0 (2026-04-30): Add Aids_Hash_Map data structure and related functions
         1.0.0 (2026-03-29): Initial Release
 */
 
