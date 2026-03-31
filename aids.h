@@ -343,7 +343,6 @@ typedef struct {
 
 AIDSHDEF Aids_Result aids_io_read(const Aids_String_Slice *filename, Aids_String_Slice *ss, const char *mode);
 AIDSHDEF Aids_Result aids_io_write(const Aids_String_Slice *filename, const Aids_String_Slice *ss, const char *mode);
-AIDSHDEF Aids_Result aids_io_list(const Aids_String_Slice *path, Aids_Array *files, Aids_List_Files_Options *options);
 AIDSHDEF Aids_Result aids_io_listdir(const Aids_String_Slice *path, Aids_Array *names);
 AIDSHDEF boolean aids_io_isdir(const Aids_String_Slice *path);
 AIDSHDEF Aids_Result aids_io_basename(const Aids_String_Slice *filepath, Aids_String_Slice *filename);

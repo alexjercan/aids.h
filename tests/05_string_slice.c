@@ -76,6 +76,25 @@ int main() {
     AIDS_ASSERT(aids_string_slice_compare(&s2, &s1) > 0, "banana should be > apple");
     AIDS_ASSERT(aids_string_slice_compare(&s1, &s1) == 0, "apple should be == apple");
 
+    // Test skip_while
+    Aids_String_Slice skip_while_test = aids_string_slice_from_cstr("   hello");
+    aids_string_slice_skip_while(&skip_while_test, isspace);
+    AIDS_ASSERT(aids_string_slice_to_cstr(&skip_while_test, &cstr) == AIDS_OK, "Failed to convert to cstr");
+    AIDS_ASSERT(strcmp(cstr, "hello") == 0, "Expected 'hello', got '%s'", cstr);
+    AIDS_FREE(cstr);
+
+    skip_while_test = aids_string_slice_from_cstr("123abc");
+    aids_string_slice_skip_while(&skip_while_test, isdigit);
+    AIDS_ASSERT(aids_string_slice_to_cstr(&skip_while_test, &cstr) == AIDS_OK, "Failed to convert to cstr");
+    AIDS_ASSERT(strcmp(cstr, "abc") == 0, "Expected 'abc', got '%s'", cstr);
+    AIDS_FREE(cstr);
+
+    skip_while_test = aids_string_slice_from_cstr("abcABC123");
+    aids_string_slice_skip_while(&skip_while_test, islower);
+    AIDS_ASSERT(aids_string_slice_to_cstr(&skip_while_test, &cstr) == AIDS_OK, "Failed to convert to cstr");
+    AIDS_ASSERT(strcmp(cstr, "ABC123") == 0, "Expected 'ABC123', got '%s'", cstr);
+    AIDS_FREE(cstr);
+
     return_defer(0);
 
 defer:
