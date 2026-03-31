@@ -326,6 +326,7 @@ typedef struct {
 } Aids_String_Builder;
 
 AIDSHDEF void aids_string_builder_init(Aids_String_Builder *sb);
+AIDSHDEF void aids_string_builder_clear(Aids_String_Builder *sb);
 AIDSHDEF Aids_Result aids_string_builder_append(Aids_String_Builder *sb, const char *format, ...) AIDS_PRINTF_FORMAT(2, 3);
 AIDSHDEF Aids_Result aids_string_builder_append_slice(Aids_String_Builder *sb, Aids_String_Slice slice);
 AIDSHDEF Aids_Result aids_string_builder_appendc(Aids_String_Builder *sb, char c);
@@ -1229,6 +1230,10 @@ AIDSHDEF void aids_string_builder_init(Aids_String_Builder *sb) {
     aids_array_init(&sb->items, sizeof(unsigned char));
 }
 
+AIDSHDEF void aids_string_builder_clear(Aids_String_Builder *sb) {
+    sb->items.count = 0;
+}
+
 AIDSHDEF Aids_Result aids_string_builder_append(Aids_String_Builder *sb, const char *format, ...) {
     Aids_Result result = AIDS_OK;
 
@@ -1559,6 +1564,7 @@ defer:
 
 #       define String_Builder Aids_String_Builder
 #       define string_builder_init aids_string_builder_init
+#       define string_builder_clear aids_string_builder_clear
 #       define string_builder_append aids_string_builder_append
 #       define string_builder_append_slice aids_string_builder_append_slice
 #       define string_builder_appendc aids_string_builder_appendc
@@ -1580,6 +1586,7 @@ defer:
 /*
     Revision history:
         1.2.0 (2026-04-31): Add aids_string_slice_skip_while()
+                            Add aids_string_builder_clear()
                             Add aids_io_listdir()
                             Add aids_io_isdir()
                             Add aids_io_mkdir()
@@ -1629,3 +1636,4 @@ defer:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
+

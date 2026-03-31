@@ -11,6 +11,8 @@ int main() {
     AIDS_ASSERT(aids_string_slice_to_cstr(&cwd, &cwd_cstr) == AIDS_OK, "Failed to convert cwd to cstr");
     aids_log(AIDS_INFO, "Current working directory: %s", cwd_cstr);
     AIDS_FREE(cwd_cstr);
+    // Free the cwd slice's underlying buffer (from the string builder)
+    AIDS_FREE(cwd.str);
 
     // Test aids_io_mkdir (non-recursive)
     Aids_String_Slice test_dir = aids_string_slice_from_cstr("build/test_dir");
@@ -65,11 +67,12 @@ int main() {
     AIDS_ASSERT(found_shared_h == true, "Should find shared.h in tests directory");
     AIDS_ASSERT(found_this_test == true, "Should find 09_io.c in tests directory");
 
-    // Clean up the array (note: the string slices inside are managed by aids_io_listdir)
+    // Clean up: free the underlying buffers from each string slice
     for (unsigned long i = 0; i < files.count; i++) {
         Aids_String_Slice *name = NULL;
         AIDS_ASSERT(aids_array_get(&files, i, (void **)&name) == AIDS_OK, "Failed to get file name");
-        aids_string_builder_free((Aids_String_Builder *)&name->str);
+        // Free the underlying buffer that was allocated by the string builder
+        AIDS_FREE(name->str);
     }
     aids_array_free(&files);
 
